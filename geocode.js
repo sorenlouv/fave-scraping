@@ -4,7 +4,7 @@ var restaurants;
 casper.start();
 
 // Get all restaurants
-casper.thenOpen('http://127.0.0.1:8888/restaurant?limit=999&offset=0', {
+casper.thenOpen('http://api.joinfave.local/restaurant?limit=999&offset=0', {
   method: 'GET'
 });
 
@@ -56,7 +56,7 @@ casper.then(function(){
       require('utils').dump(response.results[0].geometry.location);
 
       // Update MongoDB
-      casper.thenOpen('http://127.0.0.1:8888/restaurant/' + restaurant._id, {
+      casper.thenOpen('http://api.joinfave.local/restaurant/' + restaurant._id, {
         method: 'PUT',
         data: data,
         headers: {

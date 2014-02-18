@@ -146,7 +146,7 @@ function getInternalRestaurantId(internalRestaurantId, externalRestaurantId, cal
   if(internalRestaurantId){
     callback(internalRestaurantId);
   }else{
-    casper.thenOpen('http://127.0.0.1:8888/restaurant/id/' + externalRestaurantId, {
+    casper.thenOpen('http://api.joinfave.local/restaurant/id/' + externalRestaurantId, {
       method: 'get',
       headers: {
         'Content-Type': 'application/json'
@@ -190,7 +190,7 @@ function fetchMenus(restaurants){
         });
 
         // Insert restaurant into MongoDB
-        casper.thenOpen('http://127.0.0.1:8888/restaurant', {
+        casper.thenOpen('http://api.joinfave.local/restaurant', {
           method: 'post',
           headers: {
             'Content-Type': 'application/json'
@@ -221,7 +221,7 @@ function fetchMenus(restaurants){
                 item.restaurant = internalRestaurantId;
               });
 
-              casper.thenOpen('http://127.0.0.1:8888/meal', {
+              casper.thenOpen('http://api.joinfave.local/meal', {
                 method: 'post',
                 data: item,
                 headers: {
