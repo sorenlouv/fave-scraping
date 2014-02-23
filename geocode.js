@@ -1,3 +1,5 @@
+/*jslint node: true */
+
 var casper = require('casper').create();
 var restaurants;
 
@@ -19,15 +21,25 @@ casper.then(function(){
     var fullAddress;
 
     casper.then(function(){
-      console.log("Lookup", restaurant.name);
+      console.log("Find restaurant: ", restaurant.name);
 
       fullAddress = restaurant.location.address[0] + ' ';
-      fullAddress += restaurant.location.address[1] ? restaurant.location.address[1] + ' ' : '';
-      fullAddress += restaurant.location.city + ' ' + restaurant.location.country_code;
+
+      // Restaurant has an extra address line
+      if(restaurant.location.address[1] !== undefined && restaurant.location.address[1] !== null){
+        if(restaurant.location.address.indexOf(",") > -1){ // The address contains a comma
+          var strippedAddress = restaurant.location.address[1].match(/^(.*?),/); // remove everything after comma
+          fullAddress += strippedAddress[1] + ' ';
+        }else{
+          fullAddress += restaurant.location.address + ' ';
+        }
+      }
+      fullAddress += restaurant.location.city + ' ';
+      fullAddress += restaurant.location.country_code;
       console.log(fullAddress);
     });
 
-    // Request
+    // Request to Google
     casper.then(function(){
       casper.thenOpen('http://maps.google.com/maps/api/geocode/json?sensor=false&address=' + encodeURIComponent(fullAddress), {
         method: 'GET'
@@ -42,6 +54,11 @@ casper.then(function(){
         return;
       }
 
+      if(response.results[0].geometry.location_type == "APPROXIMATE"){
+        console.error("Could only find approximate location for ", restaurant.name);
+        return;
+      }
+
       // Add coordinates to restaurant info
       restaurant.location.coordinate = [response.results[0].geometry.location.lng, response.results[0].geometry.location.lat];
 
@@ -52,7 +69,7 @@ casper.then(function(){
         location: restaurant.location
       };
 
-      console.log("Found coordinates");
+      console.log("Found coordinates", restaurant.name);
       require('utils').dump(response.results[0].geometry.location);
 
       // Update MongoDB
@@ -67,6 +84,7 @@ casper.then(function(){
       casper.then(function(){
         var response = JSON.parse(this.getPageContent());
         require('utils').dump(response);
+        console.log("-----------------------");
       });
     });
   });

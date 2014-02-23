@@ -8,7 +8,6 @@ var casper = require('casper').create({
 });
 
 // Load modules
-var fs = require('fs');
 var OAuthSimple = require('./libs/OAuthSimple.js').OAuthSimple;
 
 var offset = 0;
@@ -37,18 +36,18 @@ function getCategoriesByScrape(){
   var categoryElements = document.querySelectorAll('.menu-section');
   for(var i= 0; i<categoryElements.length; i++){
 
-    // items
-    var items = [];
+    // meals
+    var meals = [];
     var itemElements = categoryElements[i].querySelectorAll('.menu-item');
     for(var j=0; j<itemElements.length; j++){
 
-      // item prices (label + amount)
-      // An item can have multiple prices. Often, these prices have labels (eg. Small, medium, large), but not always
+      // meal prices (label + amount)
+      // An meal can have multiple prices. Often, these prices have labels (eg. Small, medium, large), but not always
       var prices = [];
       var pricesElement = itemElements[j].querySelector('.menu-item-prices');
       var hasLabels = pricesElement.querySelector('table') !== null;
 
-      // The item's prices have labels
+      // The meal's prices have labels
       if(hasLabels){
         var tableRows = pricesElement.querySelectorAll('tr');
         for(var row=0; row<tableRows.length; row++){
@@ -74,7 +73,7 @@ function getCategoriesByScrape(){
       review_count = Number(review_count.replace(/[^\d.]/g, '')); // strip everything but digits
 
       if(review_count > 5){
-        items.push({
+        meals.push({
           name: stripHtml(itemElements[j].querySelector('.menu-item-details h3')),
           description: stripHtml(itemElements[j].querySelector('.menu-item-details .menu-item-details-description')),
           prices: prices,
@@ -82,20 +81,20 @@ function getCategoriesByScrape(){
           image: itemElements[j].querySelector('.media-avatar img').src.replace('60s.jpg', 'l.jpg')
         });
       }
-    } // end of items
+    } // end of meals
 
-    if(items.length > 0){
-      // Sort items by number of reviews
-      items = items.sort(byReviewCount);
+    if(meals.length > 0){
+      // Sort meals by number of reviews
+      meals = meals.sort(byReviewCount);
 
       // Fetch the top 20% (always at least two)
-      var itemsToFetch = Math.ceil(items.length * 0.20) + 1;
-      items = items.splice(0, itemsToFetch);
+      var itemsToFetch = Math.ceil(meals.length * 0.20) + 1;
+      meals = meals.splice(0, itemsToFetch);
 
       categories.push({
         name: stripHtml(categoryElements[i].previousElementSibling.querySelector('h2')),
         description: stripHtml(categoryElements[i].previousElementSibling.querySelector('p')),
-        items: items
+        meals: meals
       });
     }
   }
@@ -107,14 +106,17 @@ function getCategoriesByScrape(){
  *
  ******************************************/
 function getRestaurantsFromApi(offset, successCallback){
-  var latitude = '37.791778'; // North of Market
-  var longtitude = '-122.407487'; // North of Market
+  // http://www.latlong.net/Show-Latitude-Longitude.html
+  var missionDistrict = {latitude: '37.760876', longitude: '-122.415462'};
+  var northOfMarket = {latitude: '37.791778', longitude: '-122.407487'};
+  var oakland = {latitude: '37.805580', longitude: '-122.244058'};
+  var coordinates = oakland;
+
   var category_filter = 'restaurants';
   var radius_filter = 50000;
   var limit = 20;
 
-  var parameters = 'll=' + latitude + ',' + longtitude + '&category_filter=' + category_filter + '&radius_filter=' + radius_filter + '&limit=' + limit + '&offset=' + offset;
-  // 'location=SanFrancisco&category_filter=restaurants&radius_filter=50000&limit=20&offset=' + offset,
+  var parameters = 'll=' + coordinates.latitude + ',' + coordinates.longitude + '&category_filter=' + category_filter + '&radius_filter=' + radius_filter + '&limit=' + limit + '&offset=' + offset;
 
   var oauth;
   casper.then(function renderRequest(){
@@ -214,23 +216,29 @@ function fetchMenus(restaurants){
             return;
           }
 
-          // Insert items into MongoDB
+          // Iterate over categories, meals
           categories.forEach(function(category) {
-            category.items.forEach(function(item) {
+            category.meals.forEach(function(meal) {
+
+              // Add restaurant info to meal
               casper.then(function(){
-                item.restaurant = internalRestaurantId;
+                meal.restaurant = {
+                  _id: internalRestaurantId,
+                  name: restaurant.name
+                };
               });
 
+              // POST meal to MongoDB
               casper.thenOpen('http://api.joinfave.local/meal', {
                 method: 'post',
-                data: item,
+                data: meal,
                 headers: {
                   'Content-Type': 'application/json'
                 },
               });
 
               casper.then(function() {
-                console.log("Inserted item", item.name);
+                console.log("Inserted meal", meal.name);
               });
             });
           });
