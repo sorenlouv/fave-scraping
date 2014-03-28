@@ -5,6 +5,8 @@
 var casper = require('casper').create({
   verbose: false,
   logLevel: 'debug'
+  loadImages:  false,
+  loadPlugins: false 
 });
 
 // Load modules
