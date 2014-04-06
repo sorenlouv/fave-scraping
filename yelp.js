@@ -4,15 +4,18 @@
 
 var casper = require('casper').create({
   verbose: false,
-  logLevel: 'debug'
-  loadImages:  false,
-  loadPlugins: false 
+  logLevel: 'debug',
+  loadImages: false,
+  loadPlugins: false
 });
 
 // Load modules
 var OAuthSimple = require('./libs/OAuthSimple.js').OAuthSimple;
+var utils = require('utils');
 
+// Set variables
 var offset = 0;
+var backendHost = 'http://api.joinfave.local';
 
 casper.start();
 
@@ -85,6 +88,13 @@ function getCategoriesByScrape(){
       }
     } // end of meals
 
+    // Remove meals without images
+    if(meals.length > 0){
+      meals = meals.filter(function(meal){
+        return meal.image.indexOf('default_avatars/menu_medium_square.png') === -1;
+      });
+    }
+
     if(meals.length > 0){
       // Sort meals by number of reviews
       meals = meals.sort(byReviewCount);
@@ -109,8 +119,8 @@ function getCategoriesByScrape(){
  ******************************************/
 function getRestaurantsFromApi(offset, successCallback){
   // http://www.latlong.net/Show-Latitude-Longitude.html
-  var missionDistrict = {latitude: '37.760876', longitude: '-122.415462'};
-  var northOfMarket = {latitude: '37.791778', longitude: '-122.407487'};
+  // var missionDistrict = {latitude: '37.760876', longitude: '-122.415462'};
+  // var northOfMarket = {latitude: '37.791778', longitude: '-122.407487'};
   var oakland = {latitude: '37.805580', longitude: '-122.244058'};
   var coordinates = oakland;
 
@@ -150,7 +160,7 @@ function getInternalRestaurantId(internalRestaurantId, externalRestaurantId, cal
   if(internalRestaurantId){
     callback(internalRestaurantId);
   }else{
-    casper.thenOpen('http://api.joinfave.local/restaurant/id/' + externalRestaurantId, {
+    casper.thenOpen(backendHost + '/restaurant/id/' + externalRestaurantId, {
       method: 'get',
       headers: {
         'Content-Type': 'application/json'
@@ -168,18 +178,18 @@ function fetchMenus(restaurants){
 
   casper.then(function(){
     if(!restaurants || restaurants.length === 0){
-      console.log("Skipping. No restaurants");
+      console.log('Skipping. No restaurants');
       return;
     }
 
     restaurants.forEach(function(restaurant) {
       if(restaurant.menu_date_updated === undefined){
-        console.log("Skipping. No menu", restaurant.id);
+        console.log('Skipping. No menu', restaurant.id);
         return;
       }
 
       if(restaurant.rating < 3){
-        console.log("Skipping. Too low rating", restaurant.rating, restaurant.id);
+        console.log('Skipping. Too low rating', restaurant.rating, restaurant.id);
         return;
       }
 
@@ -194,27 +204,32 @@ function fetchMenus(restaurants){
         });
 
         // Insert restaurant into MongoDB
-        casper.thenOpen('http://api.joinfave.local/restaurant', {
+        casper.thenOpen(backendHost + '/restaurant', {
           method: 'post',
           headers: {
             'Content-Type': 'application/json'
           },
           data: restaurant
-        });
+        }, function(response){
+          if(response.status !== 200){
+            console.warn('An error occured while saving restaurant');
+            utils.dump(response);
+            utils.dump(casper.getPageContent());
+          }else{
+            console.log('Inserted restaurant', restaurant.id);
+            var pageContent = JSON.parse(casper.getPageContent());
 
-        // Get internal restaurant ID
-        casper.then(function(){
-          console.log("Inserted restaurant", restaurant.id);
-          var response = JSON.parse(casper.getPageContent());
-          getInternalRestaurantId(response._id, restaurant.id, function(id){
-            internalRestaurantId = id;
-          });
+            // Get internal restaurant ID
+            getInternalRestaurantId(pageContent._id, restaurant.id, function(id){
+              internalRestaurantId = id;
+            });
+          }
         });
 
         // Insert data into MongoDB
         casper.then(function(){
           if(!categories || categories.length === 0){
-            console.log("Skipping. No categories", restaurant.id);
+            console.log('Skipping. No categories', restaurant.id);
             return;
           }
 
@@ -226,21 +241,27 @@ function fetchMenus(restaurants){
               casper.then(function(){
                 meal.restaurant = {
                   _id: internalRestaurantId,
-                  name: restaurant.name
+                  name: restaurant.name,
+                  categories: restaurant.categories,
+                  phone: restaurant.phone
                 };
               });
 
               // POST meal to MongoDB
-              casper.thenOpen('http://api.joinfave.local/meal', {
+              casper.thenOpen(backendHost + '/meal', {
                 method: 'post',
                 data: meal,
                 headers: {
                   'Content-Type': 'application/json'
                 },
-              });
-
-              casper.then(function() {
-                console.log("Inserted meal", meal.name);
+              }, function(response){
+                if(response.status !== 200){
+                  console.warn('An error occured while saving meal');
+                  utils.dump(response);
+                  utils.dump(casper.getPageContent());
+                }else{
+                  console.log('Inserted meal', meal.name);
+                }
               });
             });
           });
@@ -251,13 +272,13 @@ function fetchMenus(restaurants){
 
   casper.then(function loadNextRestaurants(){
     offset += 20;
-    console.log("Offset increment", offset);
+    console.log('Offset increment', offset);
 
     // Yelp limits the offset to 1000
     if(offset < 1000){
       getRestaurantsFromApi(offset, fetchMenus);
     }else{
-      console.log("Finished! Change the coordinates and restart.");
+      console.log('Finished! Change the coordinates and restart.');
     }
   });
 }
